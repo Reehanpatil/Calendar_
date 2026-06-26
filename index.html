@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aaj Ka Din — Apna Calendar</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-night:#0a0d17;
+    --ink:#f3eee3;
+    --ink-dim:#a8a4ba;
+    --marigold:#f2a13a;
+    --marigold-dim:#7a5a26;
+    --rose:#e8617a;
+    --jade:#36c08f;
+    --indigo-line:#262b42;
+  }
+  *{box-sizing:border-box;}
+  body{
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(242,161,58,0.10), transparent),
+      radial-gradient(ellipse 60% 40% at 90% 90%, rgba(54,192,143,0.06), transparent),
+      var(--bg-night);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+  }
+  .font-display{font-family:'Cormorant Garamond', serif;}
+  .font-mono{font-family:'JetBrains Mono', monospace;}
+
+  ::-webkit-scrollbar{width:6px;height:6px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--indigo-line);border-radius:8px;}
+
+  .glass{
+    background:linear-gradient(160deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015));
+    border:1px solid rgba(255,255,255,0.08);
+    backdrop-filter:blur(18px);
+  }
+
+  .diya-dot{
+    width:6px;height:6px;border-radius:50%;
+    background:var(--marigold);
+    box-shadow:0 0 6px 1px rgba(242,161,58,0.7);
+  }
+  @keyframes flicker{
+    0%,100%{opacity:1; box-shadow:0 0 6px 1px rgba(242,161,58,0.7);}
+    50%{opacity:0.75; box-shadow:0 0 9px 2px rgba(242,161,58,0.9);}
+  }
+  .diya-flicker{ animation: flicker 2.4s ease-in-out infinite; }
+
+  @keyframes pulse-ring{
+    0%{box-shadow:0 0 0 0 rgba(242,161,58,0.55);}
+    70%{box-shadow:0 0 0 8px rgba(242,161,58,0);}
+    100%{box-shadow:0 0 0 0 rgba(242,161,58,0);}
+  }
+  .today-pulse{ animation: pulse-ring 2.5s cubic-bezier(0.4,0,0.6,1) infinite; }
+
+  .cell-enter{ animation: cellIn 0.4s ease backwards; }
+  @keyframes cellIn{
+    from{opacity:0; transform:translateY(6px) scale(0.97);}
+    to{opacity:1; transform:translateY(0) scale(1);}
+  }
+
+  .slide-in{ animation: slideIn 0.35s cubic-bezier(0.16,1,0.3,1); }
+  @keyframes slideIn{
+    from{ transform:translateX(24px); opacity:0; }
+    to{ transform:translateX(0); opacity:1; }
+  }
+
+  .fade-in{ animation: fadeIn 0.5s ease; }
+  @keyframes fadeIn{ from{opacity:0;} to{opacity:1;} }
+
+  .month-swap-enter{ animation: monthIn 0.32s ease; }
+  @keyframes monthIn{
+    from{ opacity:0; transform:translateX(14px); }
+    to{ opacity:1; transform:translateX(0); }
+  }
+
+  input[type="text"], textarea{
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.1);
+    color:var(--ink);
+  }
+  input[type="text"]:focus, textarea:focus{
+    outline:none;
+    border-color:var(--marigold);
+    box-shadow:0 0 0 3px rgba(242,161,58,0.15);
+  }
+  input[type="text"]::placeholder, textarea::placeholder{ color:var(--ink-dim); }
+
+  .mood-btn{ transition:transform 0.15s ease, background 0.15s ease; }
+  .mood-btn:hover{ transform:translateY(-3px) scale(1.08); }
+  .mood-btn.active{ background:rgba(242,161,58,0.18); box-shadow:0 0 0 1px var(--marigold); }
+
+  .day-cell{ transition: background 0.18s ease, transform 0.15s ease, border-color 0.18s ease; }
+  .day-cell:hover{ background:rgba(255,255,255,0.05); }
+  .day-cell.selected{ border-color:var(--marigold) !important; background:rgba(242,161,58,0.08); }
+
+  button:focus-visible, .day-cell:focus-visible{
+    outline:2px solid var(--marigold);
+    outline-offset:2px;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; }
+  }
+
+  .tag-pill{
+    font-size:10px; letter-spacing:0.04em; padding:2px 7px; border-radius:99px;
+    text-transform:uppercase; font-weight:600;
+  }
+
+  #sidePanel{ transition: transform 0.35s cubic-bezier(0.16,1,0.3,1); }
+
+  .hero-bg-glow{
+    background: radial-gradient(circle at 30% 20%, rgba(242,161,58,0.18), transparent 60%);
+  }
+</style>
+</head>
+<body class="font-sans">
+
+<div id="app" class="min-h-screen flex flex-col"></div>
+
+<script>
+// 2026 India events data — confirmed via web research (dates approximate for moon-sighting-based Islamic dates)
+const EVENTS_2026 = {
+  "2026-01-01": [{ name: "Naya Saal", type: "national", emoji: "🎉" }],
+  "2026-01-12": [{ name: "Rashtriya Yuva Diwas", type: "national", emoji: "🇮🇳" }],
+  "2026-01-14": [{ name: "Makar Sankranti", type: "hindu", emoji: "🪔" }],
+  "2026-01-23": [{ name: "Parakram Diwas", type: "national", emoji: "🇮🇳" }],
+  "2026-01-26": [{ name: "Republic Day", type: "national", emoji: "🇮🇳" }],
+  "2026-01-30": [{ name: "Shaheed Diwas", type: "national", emoji: "🕯️" }],
+  "2026-02-15": [{ name: "Maha Shivratri", type: "hindu", emoji: "🔱" }],
+  "2026-03-03": [{ name: "Holika Dahan", type: "hindu", emoji: "🔥" }],
+  "2026-03-04": [{ name: "Holi", type: "hindu", emoji: "🎨" }],
+  "2026-03-21": [{ name: "Eid-ul-Fitr (estimated)", type: "muslim", emoji: "🌙" }],
+  "2026-03-27": [{ name: "Good Friday", type: "christian", emoji: "✝️" }],
+  "2026-03-31": [{ name: "Mahavir Jayanti", type: "jain", emoji: "🙏" }],
+  "2026-04-05": [{ name: "Easter Sunday", type: "christian", emoji: "🐣" }],
+  "2026-04-14": [{ name: "Ambedkar Jayanti", type: "national", emoji: "📖" }],
+  "2026-04-15": [{ name: "Bengali Naya Saal", type: "regional", emoji: "🎊" }],
+  "2026-05-01": [{ name: "Buddha Purnima", type: "buddhist", emoji: "☸️" }],
+  "2026-05-28": [{ name: "Eid-ul-Adha (estimated)", type: "muslim", emoji: "🐑" }],
+  "2026-06-16": [{ name: "Muharram Shuru", type: "muslim", emoji: "🌙" }],
+  "2026-06-26": [{ name: "Moharram / Ashura", type: "muslim", emoji: "🖤" }],
+  "2026-07-26": [{ name: "Kargil Vijay Diwas", type: "national", emoji: "🎖️" }],
+  "2026-08-08": [{ name: "Quit India Movement Diwas", type: "national", emoji: "🇮🇳" }],
+  "2026-08-15": [{ name: "Swatantrata Diwas", type: "national", emoji: "🇮🇳" }],
+  "2026-08-26": [{ name: "Eid-e-Milad (estimated)", type: "muslim", emoji: "🌙" }],
+  "2026-08-28": [{ name: "Raksha Bandhan", type: "hindu", emoji: "🎀" }],
+  "2026-09-04": [{ name: "Krishna Janmashtami", type: "hindu", emoji: "🦚" }],
+  "2026-09-05": [{ name: "Shikshak Diwas", type: "national", emoji: "📚" }],
+  "2026-09-14": [{ name: "Ganesh Chaturthi", type: "hindu", emoji: "🐘" }],
+  "2026-10-02": [{ name: "Gandhi Jayanti", type: "national", emoji: "🕊️" }],
+  "2026-10-11": [{ name: "Navratri Shuru", type: "hindu", emoji: "💃" }],
+  "2026-10-20": [{ name: "Maha Navami / Dussehra", type: "hindu", emoji: "🏹" }],
+  "2026-10-29": [{ name: "Karwa Chauth", type: "hindu", emoji: "🌕" }],
+  "2026-11-06": [{ name: "Dhanteras", type: "hindu", emoji: "💰" }],
+  "2026-11-08": [{ name: "Kali Puja", type: "hindu", emoji: "🪔" }],
+  "2026-11-09": [{ name: "Diwali", type: "hindu", emoji: "🪔" }],
+  "2026-11-10": [{ name: "Bhai Dooj / Lakshmi Puja", type: "hindu", emoji: "🪔" }],
+  "2026-11-14": [{ name: "Bal Diwas", type: "national", emoji: "🧒" }],
+  "2026-11-15": [{ name: "Chhath Puja", type: "hindu", emoji: "🌅" }],
+  "2026-11-24": [{ name: "Guru Nanak Jayanti", type: "sikh", emoji: "☬" }],
+  "2026-12-24": [{ name: "Christmas Eve", type: "christian", emoji: "🎄" }],
+  "2026-12-25": [{ name: "Christmas", type: "christian", emoji: "🎄" }]
+};
+
+</script>
+<script>
+// ===================== STATE =====================
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const MONTH_NAMES_HI = ["जनवरी","फ़रवरी","मार्च","अप्रैल","मई","जून","जुलाई","अगस्त","सितंबर","अक्टूबर","नवंबर","दिसंबर"];
+const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const DAY_NAMES_FULL = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+
+const TYPE_META = {
+  national: { label: "National", color: "#f2a13a", dot:"bg-amber-400" },
+  hindu:    { label: "Hindu",    color: "#e8617a", dot:"bg-rose-400" },
+  muslim:   { label: "Muslim",   color: "#36c08f", dot:"bg-emerald-400" },
+  christian:{ label: "Christian",color: "#7aa2f7", dot:"bg-blue-400" },
+  sikh:     { label: "Sikh",     color: "#c084fc", dot:"bg-purple-400" },
+  jain:     { label: "Jain",     color: "#fbbf24", dot:"bg-yellow-400" },
+  buddhist: { label: "Buddhist", color: "#fb923c", dot:"bg-orange-400" },
+  regional: { label: "Regional", color: "#5eead4", dot:"bg-teal-300" }
+};
+
+const MOODS = [
+  { key:"great", emoji:"😄", label:"Badiya" },
+  { key:"good", emoji:"🙂", label:"Theek" },
+  { key:"meh", emoji:"😐", label:"Aisa Hi" },
+  { key:"bad", emoji:"😔", label:"Kharab" },
+  { key:"stressed", emoji:"😣", label:"Tension" }
+];
+
+const today = new Date();
+const todayKey = fmtKey(today);
+
+let state = {
+  viewYear: today.getFullYear(),
+  viewMonth: today.getMonth(),
+  selectedKey: todayKey,
+  userData: loadUserData() // { "2026-06-26": { notes:[], mood:"good" } }
+};
+
+function loadUserData(){
+  try{
+    const raw = localStorage.getItem("aajkadin_userdata_v1");
+    return raw ? JSON.parse(raw) : {};
+  }catch(e){ return {}; }
+}
+function saveUserData(){
+  try{ localStorage.setItem("aajkadin_userdata_v1", JSON.stringify(state.userData)); }catch(e){}
+}
+function getDayData(key){
+  if(!state.userData[key]) state.userData[key] = { notes: [], mood: null };
+  if(!state.userData[key].notes) state.userData[key].notes = [];
+  return state.userData[key];
+}
+
+function fmtKey(d){
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+function parseKey(key){
+  const [y,m,d] = key.split("-").map(Number);
+  return new Date(y, m-1, d);
+}
+function getEvents(key){
+  return (window.EVENTS_2026 && window.EVENTS_2026[key]) || [];
+}
+
+// ---- Simple Panchang-style tithi approximation ----
+// Note: this is a simplified lunar-phase based approximation for flavor/reference, not authoritative panchang.
+const TITHI_NAMES = ["Pratipada","Dwitiya","Tritiya","Chaturthi","Panchami","Shashthi","Saptami","Ashtami","Navami","Dashami","Ekadashi","Dwadashi","Trayodashi","Chaturdashi","Purnima/Amavasya"];
+function approxTithi(date){
+  // Reference new moon: Jan 1 2026 ~ amavasya-ish anchor for rough flavor calculation
+  const ref = new Date(2025, 11, 20); // approx new moon anchor
+  const synodic = 29.53058867;
+  const diffDays = (date - ref) / 86400000;
+  let cyclePos = diffDays % synodic;
+  if(cyclePos < 0) cyclePos += synodic;
+  const tithiIndex = Math.floor(cyclePos / (synodic/30));
+  const paksha = tithiIndex < 15 ? "Shukla" : "Krishna";
+  const nameIdx = tithiIndex % 15;
+  return { paksha, name: TITHI_NAMES[Math.min(nameIdx, 14)] };
+}
+
+// ===================== RENDER =====================
+function render(){
+  const app = document.getElementById("app");
+  app.innerHTML = `
+    ${renderHeroToday()}
+    <div class="flex-1 w-full max-w-7xl mx-auto px-4 md:px-6 pb-10 flex flex-col lg:flex-row gap-5">
+      ${renderCalendarSection()}
+      ${renderSidePanel()}
+    </div>
+    ${renderFooter()}
+  `;
+  attachHandlers();
+}
+
+function renderHeroToday(){
+  const tEvents = getEvents(todayKey);
+  const tithi = approxTithi(today);
+  const mainEvent = tEvents[0];
+  return `
+  <header class="relative overflow-hidden border-b border-white/5 hero-bg-glow">
+    <div class="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+      <div class="fade-in">
+        <p class="font-mono text-[11px] uppercase tracking-[0.18em] text-amber-300/70 mb-1">Aaj • ${DAY_NAMES_FULL[today.getDay()]}, ${today.getDate()} ${MONTH_NAMES[today.getMonth()]} ${today.getFullYear()}</p>
+        <h1 class="font-display text-3xl md:text-5xl leading-tight">
+          ${mainEvent
+            ? `<span class="text-amber-300">${mainEvent.emoji}</span> Aaj <span class="italic text-amber-300">${mainEvent.name}</span> hai`
+            : `Aaj ka koi khaas tyohaar nahi — <span class="italic text-amber-300">par din toh khaas hai!</span>`
+          }
+        </h1>
+        <p class="text-ink-dim text-sm md:text-base mt-2 text-[#a8a4ba]">
+          ${tithi.paksha} Paksha · ${tithi.name} <span class="opacity-50">(approx. tithi)</span>
+          ${tEvents.length > 1 ? `· +${tEvents.length-1} more aaj` : ""}
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="themeToggleBtn" title="Theme" class="w-10 h-10 rounded-full glass flex items-center justify-center hover:bg-white/10 transition">
+          <span id="themeIcon">🌙</span>
+        </button>
+        <button id="gotoTodayBtn" class="font-mono text-xs uppercase tracking-wide px-4 py-2.5 rounded-full bg-amber-400/90 text-[#1a1206] font-semibold hover:bg-amber-300 transition">
+          Aaj
+        </button>
+      </div>
+    </div>
+  </header>`;
+}
+
+function renderCalendarSection(){
+  const y = state.viewYear, m = state.viewMonth;
+  const firstDay = new Date(y, m, 1);
+  const startWeekday = firstDay.getDay();
+  const daysInMonth = new Date(y, m+1, 0).getDate();
+  const daysInPrevMonth = new Date(y, m, 0).getDate();
+
+  let cells = [];
+  // leading days from prev month
+  for(let i=startWeekday-1; i>=0; i--){
+    const dayNum = daysInPrevMonth - i;
+    cells.push({ dayNum, inMonth:false, dateObj: new Date(y, m-1, dayNum) });
+  }
+  // current month
+  for(let d=1; d<=daysInMonth; d++){
+    cells.push({ dayNum:d, inMonth:true, dateObj: new Date(y, m, d) });
+  }
+  // trailing to complete weeks (multiple of 7)
+  while(cells.length % 7 !== 0){
+    const nextIdx = cells.length - (startWeekday + daysInMonth) + 1;
+    cells.push({ dayNum: nextIdx, inMonth:false, dateObj: new Date(y, m+1, nextIdx) });
+  }
+
+  const cellsHtml = cells.map((c, idx) => renderDayCell(c, idx)).join("");
+
+  return `
+  <section class="flex-1 min-w-0">
+    <div class="glass rounded-2xl p-4 md:p-6">
+      <div class="flex items-center justify-between mb-5">
+        <div class="flex items-center gap-3">
+          <button id="prevMonthBtn" class="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center transition text-lg" aria-label="Pichla mahina">‹</button>
+          <h2 class="font-display text-2xl md:text-3xl min-w-[180px] text-center md:text-left month-swap-enter" key="${y}-${m}">
+            ${MONTH_NAMES[m]} <span class="text-amber-300/80">${y}</span>
+            <span class="block text-xs font-sans font-normal text-[#a8a4ba] -mt-1">${MONTH_NAMES_HI[m]}</span>
+          </h2>
+          <button id="nextMonthBtn" class="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center transition text-lg" aria-label="Agla mahina">›</button>
+        </div>
+        <div class="hidden md:flex items-center gap-1.5 flex-wrap max-w-xs justify-end">
+          ${Object.entries(TYPE_META).slice(0,4).map(([k,v]) => `
+            <span class="tag-pill" style="background:${v.color}22; color:${v.color}; border:1px solid ${v.color}44;">${v.label}</span>
+          `).join("")}
+        </div>
+      </div>
+
+      <div class="grid grid-cols-7 gap-1.5 mb-2">
+        ${DAY_NAMES.map(d => `<div class="text-center font-mono text-[10px] uppercase tracking-wider text-[#a8a4ba] py-1">${d}</div>`).join("")}
+      </div>
+
+      <div class="grid grid-cols-7 gap-1.5">
+        ${cellsHtml}
+      </div>
+    </div>
+
+    ${renderLegendMobile()}
+  </section>`;
+}
+
+function renderLegendMobile(){
+  return `
+  <div class="md:hidden flex items-center gap-1.5 flex-wrap mt-3 px-1">
+    ${Object.entries(TYPE_META).map(([k,v]) => `
+      <span class="tag-pill" style="background:${v.color}22; color:${v.color}; border:1px solid ${v.color}44;">${v.label}</span>
+    `).join("")}
+  </div>`;
+}
+
+function renderDayCell(c, idx){
+  const key = fmtKey(c.dateObj);
+  const events = getEvents(key);
+  const dayData = state.userData[key];
+  const hasNotes = dayData && dayData.notes && dayData.notes.length > 0;
+  const mood = dayData && dayData.mood ? MOODS.find(mo => mo.key === dayData.mood) : null;
+  const isToday = key === todayKey;
+  const isSelected = key === state.selectedKey;
+  const isWeekend = c.dateObj.getDay() === 0 || c.dateObj.getDay() === 6;
+
+  const mainEvent = events[0];
+  const borderColor = mainEvent ? TYPE_META[mainEvent.type].color : "transparent";
+
+  return `
+  <button
+    class="day-cell cell-enter relative aspect-square rounded-xl flex flex-col items-center justify-center gap-0.5 p-1 border ${isSelected ? 'selected' : 'border-white/5'} ${!c.inMonth ? 'opacity-30' : ''}"
+    style="animation-delay:${idx * 8}ms; ${mainEvent && c.inMonth ? `box-shadow: inset 0 0 0 1px ${borderColor}33;` : ''}"
+    data-key="${key}"
+    aria-label="${c.dateObj.getDate()} ${MONTH_NAMES[c.dateObj.getMonth()]}${mainEvent ? ', ' + mainEvent.name : ''}"
+  >
+    ${isToday ? `<span class="absolute inset-0 rounded-xl ring-1 ring-amber-400/70 today-pulse"></span>` : ""}
+    <span class="font-mono text-sm md:text-base ${isToday ? 'text-amber-300 font-bold' : c.inMonth ? (isWeekend ? 'text-rose-300/80' : 'text-[#f3eee3]') : 'text-[#a8a4ba]'}">${c.dayNum}</span>
+    ${mainEvent ? `<span class="text-[13px] leading-none diya-flicker">${mainEvent.emoji}</span>` : `<span class="h-[13px]"></span>`}
+    <div class="flex items-center gap-0.5 h-2.5">
+      ${hasNotes ? `<span class="w-1 h-1 rounded-full bg-sky-300/80"></span>` : ""}
+      ${mood ? `<span class="text-[8px]">${mood.emoji}</span>` : ""}
+      ${events.length > 1 ? `<span class="w-1 h-1 rounded-full bg-amber-300/80"></span>` : ""}
+    </div>
+  </button>`;
+}
+
+function renderSidePanel(){
+  const key = state.selectedKey;
+  const date = parseKey(key);
+  const events = getEvents(key);
+  const dayData = getDayData(key);
+  const tithi = approxTithi(date);
+  const isToday = key === todayKey;
+
+  return `
+  <aside id="sidePanel" class="lg:w-[360px] w-full glass rounded-2xl p-5 md:p-6 slide-in flex flex-col gap-5 lg:sticky lg:top-5 lg:self-start lg:max-h-[calc(100vh-2.5rem)] overflow-y-auto">
+    <div>
+      <p class="font-mono text-[11px] uppercase tracking-[0.15em] text-amber-300/70">${isToday ? "Aaj" : DAY_NAMES_FULL[date.getDay()]}</p>
+      <h3 class="font-display text-3xl mt-0.5">${date.getDate()} <span class="text-[#a8a4ba] text-xl">${MONTH_NAMES[date.getMonth()]} ${date.getFullYear()}</span></h3>
+      <p class="text-xs text-[#a8a4ba] mt-1">${tithi.paksha} Paksha · ${tithi.name}</p>
+    </div>
+
+    ${events.length > 0 ? `
+      <div class="flex flex-col gap-2">
+        ${events.map(ev => `
+          <div class="flex items-center gap-3 rounded-xl p-3 border" style="background:${TYPE_META[ev.type].color}14; border-color:${TYPE_META[ev.type].color}33;">
+            <span class="text-2xl">${ev.emoji}</span>
+            <div class="flex-1 min-w-0">
+              <p class="font-semibold text-sm leading-tight truncate">${ev.name}</p>
+              <span class="tag-pill mt-1 inline-block" style="background:${TYPE_META[ev.type].color}22; color:${TYPE_META[ev.type].color};">${TYPE_META[ev.type].label}</span>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    ` : `
+      <div class="rounded-xl p-4 border border-white/5 bg-white/[0.02] text-sm text-[#a8a4ba]">
+        Is din koi tyohaar darj nahi hai — par apna note ya mood toh daal sakte ho!
+      </div>
+    `}
+
+    <div>
+      <p class="font-mono text-[11px] uppercase tracking-wide text-[#a8a4ba] mb-2">Mood Kaisa Hai?</p>
+      <div class="flex items-center justify-between gap-1">
+        ${MOODS.map(mo => `
+          <button class="mood-btn flex-1 flex flex-col items-center gap-1 py-2 rounded-xl ${dayData.mood === mo.key ? 'active' : 'hover:bg-white/5'}" data-mood="${mo.key}">
+            <span class="text-xl">${mo.emoji}</span>
+            <span class="text-[9px] text-[#a8a4ba]">${mo.label}</span>
+          </button>
+        `).join("")}
+      </div>
+    </div>
+
+    <div class="flex-1 flex flex-col min-h-[140px]">
+      <p class="font-mono text-[11px] uppercase tracking-wide text-[#a8a4ba] mb-2">Notes / Reminders</p>
+      <div id="notesList" class="flex flex-col gap-2 mb-3 max-h-48 overflow-y-auto">
+        ${dayData.notes.length === 0 ? `<p class="text-xs text-[#a8a4ba] italic">Koi note nahi hai abhi.</p>` : dayData.notes.map((n, i) => `
+          <div class="flex items-start gap-2 bg-white/[0.03] rounded-lg p-2.5 group">
+            <span class="text-xs flex-1 leading-snug break-words">${escapeHtml(n)}</span>
+            <button data-noteidx="${i}" class="deleteNoteBtn text-[#a8a4ba] hover:text-rose-400 transition text-xs opacity-60 group-hover:opacity-100">✕</button>
+          </div>
+        `).join("")}
+      </div>
+      <form id="addNoteForm" class="flex gap-2 mt-auto">
+        <input type="text" id="noteInput" placeholder="Reminder likho..." class="flex-1 rounded-lg px-3 py-2 text-sm" maxlength="140" />
+        <button type="submit" class="px-3 py-2 rounded-lg bg-amber-400/90 text-[#1a1206] font-semibold text-sm hover:bg-amber-300 transition">+</button>
+      </form>
+    </div>
+  </aside>`;
+}
+
+function renderFooter(){
+  return `
+  <footer class="border-t border-white/5 py-5 text-center">
+    <p class="font-mono text-[10px] uppercase tracking-[0.15em] text-[#a8a4ba]/60">Made with 🪔 · Tithi values approximate</p>
+  </footer>`;
+}
+
+function escapeHtml(str){
+  const d = document.createElement("div");
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+// ===================== HANDLERS =====================
+function attachHandlers(){
+  const prevBtn = document.getElementById("prevMonthBtn");
+  const nextBtn = document.getElementById("nextMonthBtn");
+  const todayBtn = document.getElementById("gotoTodayBtn");
+  const themeBtn = document.getElementById("themeToggleBtn");
+
+  if(prevBtn) prevBtn.addEventListener("click", () => changeMonth(-1));
+  if(nextBtn) nextBtn.addEventListener("click", () => changeMonth(1));
+  if(todayBtn) todayBtn.addEventListener("click", () => {
+    state.viewYear = today.getFullYear();
+    state.viewMonth = today.getMonth();
+    state.selectedKey = todayKey;
+    render();
+  });
+  if(themeBtn) themeBtn.addEventListener("click", toggleTheme);
+
+  document.querySelectorAll(".day-cell").forEach(cell => {
+    cell.addEventListener("click", () => {
+      state.selectedKey = cell.dataset.key;
+      const cellDate = parseKey(cell.dataset.key);
+      if(cellDate.getMonth() !== state.viewMonth || cellDate.getFullYear() !== state.viewYear){
+        state.viewMonth = cellDate.getMonth();
+        state.viewYear = cellDate.getFullYear();
+      }
+      render();
+    });
+  });
+
+  document.querySelectorAll(".mood-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const dayData = getDayData(state.selectedKey);
+      dayData.mood = dayData.mood === btn.dataset.mood ? null : btn.dataset.mood;
+      saveUserData();
+      render();
+    });
+  });
+
+  const noteForm = document.getElementById("addNoteForm");
+  if(noteForm){
+    noteForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const input = document.getElementById("noteInput");
+      const val = input.value.trim();
+      if(!val) return;
+      const dayData = getDayData(state.selectedKey);
+      dayData.notes.push(val);
+      saveUserData();
+      render();
+      // refocus note input after rerender for fast multi-entry
+      setTimeout(() => {
+        const newInput = document.getElementById("noteInput");
+        if(newInput) newInput.focus();
+      }, 0);
+    });
+  }
+
+  document.querySelectorAll(".deleteNoteBtn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const dayData = getDayData(state.selectedKey);
+      dayData.notes.splice(Number(btn.dataset.noteidx), 1);
+      saveUserData();
+      render();
+    });
+  });
+
+  updateThemeIcon();
+}
+
+function changeMonth(delta){
+  state.viewMonth += delta;
+  if(state.viewMonth < 0){ state.viewMonth = 11; state.viewYear--; }
+  if(state.viewMonth > 11){ state.viewMonth = 0; state.viewYear++; }
+  render();
+}
+
+// ===================== THEME =====================
+function toggleTheme(){
+  const isLight = document.body.classList.toggle("light-mode");
+  localStorage.setItem("aajkadin_theme", isLight ? "light" : "dark");
+  updateThemeIcon();
+}
+function updateThemeIcon(){
+  const icon = document.getElementById("themeIcon");
+  if(!icon) return;
+  icon.textContent = document.body.classList.contains("light-mode") ? "☀️" : "🌙";
+}
+function initTheme(){
+  const saved = localStorage.getItem("aajkadin_theme");
+  if(saved === "light") document.body.classList.add("light-mode");
+}
+
+// light mode style override (added dynamically to avoid bloating main stylesheet)
+const lightStyle = document.createElement("style");
+lightStyle.textContent = `
+  body.light-mode{
+    background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(242,161,58,0.12), transparent), #f7f3ec;
+    color:#241f17;
+  }
+  body.light-mode .glass{
+    background:linear-gradient(160deg, rgba(255,255,255,0.7), rgba(255,255,255,0.4));
+    border:1px solid rgba(0,0,0,0.06);
+  }
+  body.light-mode .text-\\[\\#a8a4ba\\]{ color:#8a8270 !important; }
+  body.light-mode .text-\\[\\#f3eee3\\]{ color:#241f17 !important; }
+  body.light-mode input[type="text"], body.light-mode textarea{
+    background:rgba(0,0,0,0.03); border:1px solid rgba(0,0,0,0.1); color:#241f17;
+  }
+  body.light-mode .bg-white\\/\\[0\\.03\\]{ background:rgba(0,0,0,0.035) !important; }
+  body.light-mode .bg-white\\/\\[0\\.02\\]{ background:rgba(0,0,0,0.025) !important; }
+  body.light-mode .border-white\\/5{ border-color:rgba(0,0,0,0.08) !important; }
+`;
+document.head.appendChild(lightStyle);
+
+// ===================== INIT =====================
+window.EVENTS_2026 = (typeof EVENTS_2026 !== "undefined") ? EVENTS_2026 : {};
+initTheme();
+render();
+
+</script>
+</body>
+</html>
